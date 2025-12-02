@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+  engineType = "node-api"
+}
+
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Warga {
+  id_warga           Int         @id @default(autoincrement())
+  nik                String      @unique
+  nama               String
+  alamat             String?
+  kecamatan          String?
+  kabupaten          String?
+  pendapatan_bulanan String?
+  jumlah_tanggungan  Int?
+  aset               Json?
+  status_pekerjaan   String?
+  kondisi_rumah      String?
+  jumlah_utang       String?
+  pengeluaran_wajib  Int?
+  tanggal_input      DateTime    @default(now())
+  penilaian          Penilaian[]
+}
+
+model Umrs {
+  id_umr          Int      @id @default(autoincrement())
+  provinsi        String
+  kabupaten       String
+  nilai_umr       Decimal
+  tanggal_berlaku DateTime
+}
+
+model Penilaian {
+  id_penilaian        Int      @id @default(autoincrement())
+  id_warga            Int
+  skor_pendapatan     Decimal
+  skor_aset           Decimal
+  skor_rumah          Decimal
+  skor_tanggungan     Decimal
+  skor_total          Decimal
+  kategori_asnaf      String?
+  rekomendasi_bantuan String?
+  tanggal_penilaian   DateTime @default(now())
+  status_layak        String?
+  warga               Warga    @relation(fields: [id_warga], references: [id_warga], onDelete: Cascade)
+}
+
+model AhpWeights {
+  id             Int      @id @default(autoincrement())
+  kriteria       String
+  bobot          Decimal
+  tanggal_update DateTime @default(now())
+}
+
+model Users {
+  username  String
+  email     String   @unique
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  password  String
+  role      UserRole
+}
+
+enum UserRole {
+  ADMIN
+  PERANGKAT_DESA
+  KEPALA_DESA
+}

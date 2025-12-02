@@ -1,0 +1,61 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "vcs": {
+    "enabled": false,
+    "clientKind": "git",
+    "useIgnoreFile": false
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "include": [
+      "*.css",
+      "*.js",
+      "*.ts",
+      "*.json",
+      "src/**/*.ts",
+      "src/**/*.tsx",
+      "src/app/**/*.ts",
+      "src/app/**/*.tsx"
+    ],
+    "ignore": ["src/app/asset"]
+  },
+  "organizeImports": {
+    "enabled": false
+  },
+  "formatter": {
+    "enabled": true,
+    "lineEnding": "lf",
+    "indentWidth": 2,
+    "indentStyle": "space",
+    "formatWithErrors": true,
+    "lineWidth": 80
+  },
+  "javascript": {
+    "formatter": {
+      "trailingCommas": "none",
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "jsxQuoteStyle": "single"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "a11y": { "useKeyWithClickEvents": "off" },
+      "recommended": true,
+      "correctness": { "useExhaustiveDependencies": "off" },
+      "performance": { "noDelete": "off", "noAccumulatingSpread": "off" },
+      "style": { "useNumberNamespace": "off", "noNonNullAssertion": "off" },
+      "complexity": {
+        "noExtraBooleanCast": "off",
+        "noForEach": "off",
+        "useOptionalChain": "off"
+      },
+      "suspicious": {
+        "noAssignInExpressions": "off",
+        "noExplicitAny": "off",
+        "noConfusingVoidType": "off"
+      }
+    }
+  }
+}
