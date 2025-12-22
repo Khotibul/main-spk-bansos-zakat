@@ -1,8 +1,7 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "node-api"
 }
-
 
 datasource db {
   provider = "postgresql"
@@ -10,21 +9,34 @@ datasource db {
 }
 
 model Warga {
-  id_warga           Int         @id @default(autoincrement())
-  nik                String      @unique
-  nama               String
-  alamat             String?
-  kecamatan          String?
-  kabupaten          String?
-  pendapatan_bulanan String?
-  jumlah_tanggungan  Int?
-  aset               Json?
-  status_pekerjaan   String?
-  kondisi_rumah      String?
-  jumlah_utang       String?
-  pengeluaran_wajib  Int?
-  tanggal_input      DateTime    @default(now())
-  penilaian          Penilaian[]
+  id_warga               Int         @id @default(autoincrement())
+  nik                    String      @unique
+  nama                   String
+  nama_ibu               String?     // NEW
+  usia                   Int?        // NEW
+  alamat                 String?
+  kecamatan              String?
+  kabupaten              String?
+
+  pendapatan_bulanan     String?
+  jumlah_tanggungan      Int?
+  aset                   Json?
+  
+  status_pekerjaan       String?
+  kondisi_rumah          String?
+
+  perlindungan_kesehatan String?     // NEW
+  kondisi_kesehatan      String?     // NEW
+  pendidikan             String?     // NEW
+  kendaraan              String?     // NEW
+  daya_listrik           String?     // NEW
+  luas_rumah             Int?        // NEW
+
+  jumlah_utang           String?
+  pengeluaran_wajib      Int?
+
+  tanggal_input          DateTime    @default(now())
+  penilaian              Penilaian[]
 }
 
 model Umrs {
@@ -36,19 +48,40 @@ model Umrs {
 }
 
 model Penilaian {
-  id_penilaian        Int      @id @default(autoincrement())
-  id_warga            Int
-  skor_pendapatan     Decimal
-  skor_aset           Decimal
-  skor_rumah          Decimal
-  skor_tanggungan     Decimal
-  skor_total          Decimal
-  kategori_asnaf      String?
-  rekomendasi_bantuan String?
-  tanggal_penilaian   DateTime @default(now())
-  status_layak        String?
-  warga               Warga    @relation(fields: [id_warga], references: [id_warga], onDelete: Cascade)
+  id_penilaian              Int      @id @default(autoincrement())
+  id_warga                  Int
+
+  // Skor lama
+  skor_pendapatan           Decimal
+  skor_aset                 Decimal
+  skor_rumah                Decimal
+  skor_tanggungan           Decimal
+  skor_utang                Decimal?     // NEW supaya konsisten dengan jumlah_utang warga
+
+  // --- SKOR BARU (8 kriteria tambahan) ---
+  skor_perlindungan         Decimal?     // perlindungan kesehatan
+  skor_kondisi_kesehatan    Decimal?
+  skor_pendidikan           Decimal?
+  skor_kendaraan            Decimal?
+  skor_daya_listrik         Decimal?
+  skor_usia                 Decimal?
+  skor_luas_rumah           Decimal?
+  skor_status_pekerjaan     Decimal?     // status_pekerjaan Warga
+
+  // Total
+  skor_total                Decimal
+
+  kategori_asnaf            String?
+  rekomendasi_bantuan       String?
+
+  tanggal_penilaian         DateTime @default(now())
+  status_layak              String?
+  status_validasi String   @default("BELUM_DIAJUKAN")
+
+  warga                     Warga    @relation(fields: [id_warga], references: [id_warga], onDelete: Cascade)
+  validasi_logs       ValidasiLog[]
 }
+
 
 model AhpWeights {
   id             Int      @id @default(autoincrement())
@@ -65,9 +98,27 @@ model Users {
   password  String
   role      UserRole
 }
+model ValidasiLog {
+  id               Int      @id @default(autoincrement())
+  id_penilaian     Int
+  keputusan        StatusValidasi
+  catatan          String?
+  validated_by     String
+  validated_at     DateTime @default(now())
+
+  penilaian        Penilaian @relation(fields: [id_penilaian], references: [id_penilaian], onDelete: Cascade)
+}
+
 
 enum UserRole {
   ADMIN
   PERANGKAT_DESA
   KEPALA_DESA
 }
+enum StatusValidasi {
+  BELUM_DIAJUKAN
+  MENUNGGU
+  DISETUJUI
+  DITOLAK
+}
+

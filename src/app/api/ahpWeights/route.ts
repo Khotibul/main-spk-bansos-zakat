@@ -1,42 +1,49 @@
-import prisma from '@/lib/prisma';
-import { NextResponse, type NextRequest } from 'next/server';
+import prisma from "@/lib/prisma";
+import { NextResponse, type NextRequest } from "next/server";
 
-// GET: semua bobot AHP
-export async function GET(request: NextRequest) {
-  const result = await prisma.ahpWeights.findMany({ orderBy: { tanggal_update: 'desc' } });
-  return NextResponse.json(result);
-}
-
-// POST: upsert by id kalau ada, kalau tidak create
-export async function POST(request: NextRequest) {
-  const data = await request.json();
-
-  if (data.id) {
-    const result = await prisma.ahpWeights.update({
-      where: { id: Number(data.id) },
-      data: {
-        kriteria: data.kriteria,
-        bobot: data.bobot,
-        tanggal_update: data.tanggal_update ? new Date(data.tanggal_update) : new Date()
-      }
-    });
-    return NextResponse.json(result);
-  }
-
-  const result = await prisma.ahpWeights.create({
-    data: {
-      kriteria: data.kriteria,
-      bobot: data.bobot,
-      tanggal_update: data.tanggal_update ? new Date(data.tanggal_update) : new Date()
-    }
+/* =========================
+ * GET
+ * ========================= */
+export async function GET() {
+  const result = await prisma.ahpWeights.findMany({
+    orderBy: { tanggal_update: "desc" },
   });
   return NextResponse.json(result);
 }
 
-// DELETE: hapus by id
-export async function DELETE(request: NextRequest) {
-  const data = await request.json();
-  const { id } = data;
-  const result = await prisma.ahpWeights.delete({ where: { id: Number(id) } });
+/* =========================
+ * POST (CREATE / UPDATE)
+ * ========================= */
+export async function POST(req: Request) {
+  const body = await req.json();
+
+  const result = body.id
+    ? await prisma.ahpWeights.update({
+        where: { id: Number(body.id) },
+        data: {
+          kriteria: body.kriteria,
+          bobot: Number(body.bobot),
+          tanggal_update: new Date(),
+        },
+      })
+    : await prisma.ahpWeights.create({
+        data: {
+          kriteria: body.kriteria,
+          bobot: Number(body.bobot),
+          tanggal_update: new Date(),
+        },
+      });
+
+  return NextResponse.json(result);
+}
+
+/* =========================
+ * DELETE
+ * ========================= */
+export async function DELETE(req: NextRequest) {
+  const { id } = await req.json();
+  const result = await prisma.ahpWeights.delete({
+    where: { id: Number(id) },
+  });
   return NextResponse.json(result);
 }

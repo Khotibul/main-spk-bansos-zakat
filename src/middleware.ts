@@ -54,10 +54,9 @@ export const config = {
     "/signup",
     "/warga",
     "/umrs",
-    "/keseluruhan-laporan",
+    "/validasi-laporan",
     "/Penilaian",
-    "/pengabdian-masyarakat",
-    "/pengabdian-masyarakat-laporan",
-    "/pengabdian-masyarakat-luaran",
+    "/warga-validasi",
+    "/verifikasi-laporan",
   ],
 };

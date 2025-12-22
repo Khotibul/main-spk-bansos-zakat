@@ -54,9 +54,20 @@ export const REPORT_SIDEBAR_CONSTANTS = [
     url: '/ahpWeights',
     icon: ScrollText
   },
+  
     {
-    title: 'Laporan Kelayakan ',
-    url: '/pengabdian-masyarakat-luaran',
+    title: 'Permohonan Validasi ',
+    url: '/laporan-validasi',
+    icon: ScrollText
+  },
+  {
+    title: 'Laporan Konfirmasi Validasi ',
+    url: '/Penilaian/validasi',
+    icon: ScrollText
+  },
+  {
+    title: 'Cek Kelayakan Bansos ',
+    url: '/warga/cek-kelayakan',
     icon: ScrollText
   }, 
 ];

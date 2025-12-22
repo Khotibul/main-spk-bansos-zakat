@@ -6,7 +6,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useForm } from "react-hook-form";
 import { MainLayout } from "../main-layout/main-layout";
 
+// =============================
 // Types
+// =============================
 export type AHPWeight = {
   id?: number;
   kriteria: string;
@@ -14,11 +16,33 @@ export type AHPWeight = {
   tanggal_update?: string;
 };
 
+// =============================
+// FULL KRITERIA LIST — 13 TOTAL
+// =============================
+const KRITERIA_LIST = [
+  "pendapatan",
+  "aset",
+  "rumah",
+  "tanggungan",
+  "utang",
+  "perlindungan_kesehatan",
+  "kondisi_kesehatan",
+  "pendidikan",
+  "kendaraan",
+  "daya_listrik",
+  "usia",
+  "luas_rumah",
+  "status_pekerjaan",
+];
+
 export default function FuzzyAHPPage() {
   const { register, handleSubmit, reset, setValue } = useForm<AHPWeight>();
   const [data, setData] = useState<AHPWeight[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
 
+  // =============================
+  // GET DATA
+  // =============================
   async function fetchWeights() {
     const res = await fetch("/api/ahpWeights");
     const json = await res.json();
@@ -29,6 +53,9 @@ export default function FuzzyAHPPage() {
     fetchWeights();
   }, []);
 
+  // =============================
+  // SUBMIT CREATE / UPDATE
+  // =============================
   async function submit(form: AHPWeight) {
     const payload = { ...form, id: editingId ?? undefined };
     await fetch("/api/ahpWeights", {
@@ -41,12 +68,18 @@ export default function FuzzyAHPPage() {
     fetchWeights();
   }
 
+  // =============================
+  // EDIT ROW
+  // =============================
   function editRow(row: AHPWeight) {
     setEditingId(row.id ?? null);
     setValue("kriteria", row.kriteria);
     setValue("bobot", row.bobot);
   }
 
+  // =============================
+  // DELETE ROW
+  // =============================
   async function removeRow(id: number) {
     await fetch("/api/ahpWeights", {
       method: "DELETE",
@@ -56,35 +89,34 @@ export default function FuzzyAHPPage() {
     fetchWeights();
   }
 
-  // ---------- Fuzzy-AHP Logic (Simple Prediction Example) ----------
+  // =============================
+  // FUZZY INPUTS (13 fields)
+  // =============================
+  const [fuzzyInput, setFuzzyInput] = useState(
+    Object.fromEntries(KRITERIA_LIST.map((k) => [k, 0]))
+  );
+
   const [prediksi, setPrediksi] = useState<string>("");
-  const [fuzzyInput, setFuzzyInput] = useState({
-    pendapatan: 0,
-    aset: 0,
-    rumah: 0,
-    tanggungan: 0
-  });
 
+  // =============================
+  // FUZZY-AHP PREDICTION
+  // =============================
   function fuzzyPredict() {
-    const getWeight = (key: string) => data.find(d => d.kriteria.toLowerCase() === key)?.bobot || 0;
+    const getWeight = (key: string) =>
+      data.find((d) => d.kriteria.toLowerCase() === key)?.bobot || 0;
 
-    const wPend = getWeight("pendapatan");
-    const wAset = getWeight("aset");
-    const wRum = getWeight("rumah");
-    const wTang = getWeight("tanggungan");
-
-    const score =
-      fuzzyInput.pendapatan * wPend +
-      fuzzyInput.aset * wAset +
-      fuzzyInput.rumah * wRum +
-      fuzzyInput.tanggungan * wTang;
+    // SUM(score * bobot)
+    let total = 0;
+    for (const k of KRITERIA_LIST) {
+      total += (fuzzyInput as any)[k] * getWeight(k);
+    }
 
     let kategori = "";
-    if (score >= 0.75) kategori = "Sangat Layak";
-    else if (score >= 0.5) kategori = "Layak";
+    if (total >= 10.75) kategori = "Sangat Layak";
+    else if (total >= 5.5) kategori = "Layak";
     else kategori = "Tidak Layak";
 
-    setPrediksi(`Skor: ${score.toFixed(3)} — ${kategori}`);
+    setPrediksi(`Skor: ${total.toFixed(3)} — ${kategori}`);
   }
 
   return (
@@ -93,8 +125,20 @@ export default function FuzzyAHPPage() {
 
       {/* Form Create / Edit */}
       <form className="flex gap-2 mb-6" onSubmit={handleSubmit(submit)}>
-        <Input placeholder="Kriteria" {...register("kriteria")} required />
-        <Input type="number" step="0.01" placeholder="Bobot" {...register("bobot", { valueAsNumber: true })} required />
+        <select className="border px-2 py-1" {...register("kriteria")} required>
+          <option value="">Pilih Kriteria</option>
+          {KRITERIA_LIST.map((k) => (
+            <option key={k} value={k}>{k}</option>
+          ))}
+        </select>
+
+        <Input
+          type="number"
+          step="0.001"
+          placeholder="Bobot"
+          {...register("bobot", { valueAsNumber: true })}
+          required
+        />
         <Button type="submit">{editingId ? "Update" : "Tambah"}</Button>
       </form>
 
@@ -108,6 +152,7 @@ export default function FuzzyAHPPage() {
             <TableHead>Aksi</TableHead>
           </TableRow>
         </TableHeader>
+
         <TableBody>
           {data.map((d) => (
             <TableRow key={d.id}>
@@ -123,19 +168,29 @@ export default function FuzzyAHPPage() {
         </TableBody>
       </Table>
 
-      {/* Fuzzy Prediction */}
+      {/* Fuzzy Inputs */}
       <h2 className="text-lg font-semibold mb-2">Prediksi Fuzzy-AHP</h2>
 
-      <div className="grid grid-cols-4 gap-2 mb-4">
-        <Input type="number" placeholder="Fuzzy Pendapatan" onChange={(e) => setFuzzyInput({ ...fuzzyInput, pendapatan: Number(e.target.value) })} />
-        <Input type="number" placeholder="Fuzzy Aset" onChange={(e) => setFuzzyInput({ ...fuzzyInput, aset: Number(e.target.value) })} />
-        <Input type="number" placeholder="Fuzzy Rumah" onChange={(e) => setFuzzyInput({ ...fuzzyInput, rumah: Number(e.target.value) })} />
-        <Input type="number" placeholder="Fuzzy Tanggungan" onChange={(e) => setFuzzyInput({ ...fuzzyInput, tanggungan: Number(e.target.value) })} />
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        {KRITERIA_LIST.map((k) => (
+          <Input
+            key={k}
+            type="number"
+            placeholder={`Fuzzy ${k}`}
+            onChange={(e) =>
+              setFuzzyInput({ ...fuzzyInput, [k]: Number(e.target.value) })
+            }
+          />
+        ))}
       </div>
 
       <Button onClick={fuzzyPredict}>Hitung Prediksi</Button>
 
-      {prediksi && <p className="mt-4 p-3 bg-gray-100 rounded-md font-medium">{prediksi}</p>}
+      {prediksi && (
+        <p className="mt-4 p-3 bg-gray-100 rounded-md font-medium">
+          {prediksi}
+        </p>
+      )}
     </MainLayout>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
-import React, { useEffect, useState } from "react";
+
+import React, { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,21 +14,45 @@ import {
 } from "@/components/ui/table";
 import { MainLayout } from "../main-layout/main-layout";
 
-/** =========================
+/* ============================================================
  * TYPES
- * ========================= */
+ * ============================================================ */
+function mapBobot(bobotAHP: AHPWeight[]) {
+  const map: Record<string, number> = {};
+
+  bobotAHP.forEach((b) => {
+    map[b.kriteria.toLowerCase()] = Number(b.bobot);
+  });
+
+  return map;
+}
+
 export type PenilaianPayload = {
   id_penilaian?: number;
   id_warga: number;
+
   skor_pendapatan: number;
   skor_aset: number;
   skor_rumah: number;
   skor_tanggungan: number;
+  skor_utang?: number;
+
+  // --- SKOR BARU (8 KRITERIA) ---
+  skor_perlindungan?: number;
+  skor_kondisi_kesehatan?: number;
+  skor_pendidikan?: number;
+  skor_kendaraan?: number;
+  skor_daya_listrik?: number;
+  skor_usia?: number;
+  skor_luas_rumah?: number;
+  skor_status_pekerjaan?: number;
+
   skor_total?: number;
   kategori_asnaf?: string;
   rekomendasi_bantuan?: string;
   status_layak?: string;
   tanggal_penilaian?: string;
+
   warga?: any;
 };
 
@@ -35,204 +60,436 @@ export type WargaItem = {
   id_warga: number;
   nik: string;
   nama: string;
-  pendapatan_bulanan: number; // harapkan number (tanpa titik ribuan)
-  aset: string; // "Tidak Punya" | "Tanah Sewa" | "Tanah Pribadi"
-  kondisi_rumah: string; // "Kurang Layak" | "Cukup Layak" | "Layak"
+  pendapatan_bulanan: number;
+  aset: string;
+  kondisi_rumah: string;
   jumlah_tanggungan: number;
+
+  perlindungan_kesehatan?: string;
+  kondisi_kesehatan?: string;
+  pendidikan?: string;
+  kendaraan?: string;
+  daya_listrik?: number;
+  luas_rumah?: number;
+  usia?: number;
+  status_pekerjaan?: string;
+  jumlah_utang?: number;
 };
 
-/** =========================
- * AHP RULES (dari inputmu)
- * bobot dan konversi skor
- * ========================= */
-const bobot = {
-  pendapatan: 0.4,
-  aset: 0.25,
-  rumah: 0.2,
-  tanggungan: 0.15,
+export type AHPWeight = {
+  id?: number;
+  kriteria: string;
+  bobot: number;
 };
 
-// konversi pendapatan -> skor (sesuai request)
-// note: nilai pendapatan_bulanan harus numeric (tanpa pemisah titik)
-function skorPendapatanFromNumber(p: string): number {
-  if (p = "500.000") return 5;
-  if (p = "500.000 < 1.000.000") return 4;
-  if (p = "1.000.000 < 2.000.000") return 2;
-  // >= 2_000_000
-  return 1;
-}
+/* ============================================================
+ * UTIL
+ * ============================================================ */
 
-function skorAset(a: string): number {
+function parseRupiah(value?: string | number): number {
+  if (value === null || value === undefined) return 0;
 
-  if (a === "Tidak Punya") return 5;
-  if (a === "Kost") return 4;
-  if (a === "Tanah Sewa") return 3;
-  if (a === "Tanah Pribadi") return 2;
-  if (a === "Tanah Perkebunan") return 1;
-  // Tanah Pribadi atau lainnya → terbaik
-  return 1;
-}
+  if (typeof value === "number") return value;
 
-function skorRumah(r: string): number {
-  if (!r) return 1;
-  if (r.toLowerCase() === "kurang layak" || r === "Kurang Layak") return 5;
-  if (r.toLowerCase() === "cukup layak" || r === "Cukup Layak") return 3;
-  // Layak
-  return 1;
-}
-
-function skorTanggungan(t: number): number {
-  if (!t || isNaN(t)) return 1;
-  if (t >= 3) return 5;
-  if (t === 2) return 3;
-  return 1; // t === 1 or 0
-}
-
-function hitungAHP(p: number, a: number, r: number, t: number) {
-  // p,a,r,t sudah berupa skor (1..5)
   return (
-    p * bobot.pendapatan +
-    a * bobot.aset +
-    r * bobot.rumah +
-    t * bobot.tanggungan
+    Number(
+      value.replace(/[^0-9]/g, "") // hapus Rp, titik, spasi
+    ) || 0
   );
 }
 
-/**
- * Karena skor 5 = kondisi terburuk, total AHP lebih besar berarti lebih miskin.
- * Skala total berada di rentang [1 .. 5] karena bobot sum = 1 dan skor masing-masing 1..5
- */
+function toNumberSafe(v: any): number {
+  if (v === null || v === undefined) return 0;
+  const n = Number(v);
+  return isNaN(n) ? 0 : n;
+}
+
+/* ============================================================
+ * KONVERSI SKOR
+ * ============================================================ */
+
+function skorPendapatanFromString(p?: string): number {
+  if (!p) return 1;
+
+  const pendapatan = Number(
+    p.replace(/[^0-9]/g, "") // hapus Rp, titik, spasi, simbol
+  );
+
+  if (pendapatan <= 1_000_000) return 5;
+  if (pendapatan <= 2_000_000) return 4;
+  if (pendapatan <= 3_000_000) return 3;
+  if (pendapatan <= 4_000_000) return 2;
+  return 1;
+}
+
+function skorAset(a?: any): number {
+  const aset = String(a ?? "").toLowerCase();
+
+  if (aset === "Tidak Punya") return 5;
+  if (aset === "Kost") return 4;
+  if (aset === "Tanah Sewa") return 3;
+  if (aset === "Tanah Pribadi") return 2;
+  if (aset.includes("Tanah Perkebunan/Pertanian")) return 1;
+  return 1;
+}
+
+function skorRumah(r?: string): number {
+  const rumah = (r ?? "").toLowerCase();
+
+  return rumah === "kurang layak"
+    ? 5
+    : rumah === "cukup layak"
+    ? 3
+    : rumah === "layak"
+    ? 2
+    : 1;
+}
+function skorUtangFromString(u?: string): number {
+  if (!u) return 1;
+
+  const utang = Number(
+    u.replace(/[^0-9]/g, "") // hapus Rp, titik, spasi, simbol
+  );
+
+  if (utang >= 10_000_000) return 5;
+  if (utang >= 5_000_000) return 4;
+  if (utang >= 1_000_000) return 3;
+  if (utang > 0) return 2;
+  return 1;
+}
+
+function skorTanggungan(t?: number): number {
+  const x = Number(t ?? 0);
+
+  return x >= 4 ? 5 : x === 3 ? 4 : x === 2 ? 3 : x === 1 ? 2 : 1;
+}
+
+/* ============================================================
+ * KATEGORI
+ * ============================================================ */
 function kategoriByTotal(total: number): string {
-  if (total >= 4.0) return "Fakir";
-  if (total >= 3.0) return "Miskin";
-  if (total >= 2.0) return "Ghorim";
+  if (total >= 4.00) return "Fakir";
+  if (total >= 3.50) return "Miskin";
+  if (total >= 3.00) return "Ghorim";
   return "Mampu / Tidak Layak";
 }
 
 function rekomendasiByKategori(k: string) {
-  if (k === "Fakir") return "Dana Sosial + Sembako + Zakat";
+  if (k === "Fakir") return "Dana Sosial + Sembako Rutin + Zakat";
   if (k === "Miskin") return "Sembako Rutin + Zakat";
   if (k === "Ghorim") return "Zakat";
   return "Tidak Direkomendasikan";
 }
 
-/** =========================
+/* ============================================================
  * COMPONENT
- * ========================= */
+ * ============================================================ */
 export default function PenilaianPage() {
   const { register, handleSubmit, reset, watch, setValue } =
     useForm<PenilaianPayload>();
 
   const [data, setData] = useState<PenilaianPayload[]>([]);
   const [wargaList, setWargaList] = useState<WargaItem[]>([]);
+  const [bobotAHP, setBobotAHP] = useState<AHPWeight[]>([]);
   const [editingId, setEditingId] = useState<number | null>(null);
 
-  // fetch penilaian & warga
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /* ============================================================
+   * FETCH DATA
+   * ============================================================ */
   async function fetchPenilaian() {
+    setLoading(true);
     const res = await fetch("/api/penilaian");
-    if (res.ok) {
-      setData(await res.json());
-    } else {
-      setData([]);
-    }
+    if (res.ok) setData(await res.json());
+    setLoading(false);
   }
+  /* ============================================================
+   * PRESENTASE KELAYAKAN
+   * ============================================================ */
+  const statistikKelayakan = useMemo(() => {
+    const total = data.length;
+
+    if (total === 0) {
+      return {
+        total: 0,
+        layak: 0,
+        tidakLayak: 0,
+        persenLayak: 0,
+        persenTidakLayak: 0,
+      };
+    }
+
+    const layak = data.filter(
+      (d) => d.status_layak?.toLowerCase() === "layak"
+    ).length;
+
+    const tidakLayak = total - layak;
+
+    return {
+      total,
+      layak,
+      tidakLayak,
+      persenLayak: Number(((layak / total) * 100).toFixed(2)),
+      persenTidakLayak: Number(((tidakLayak / total) * 100).toFixed(2)),
+    };
+  }, [data]);
 
   async function fetchWarga() {
     const res = await fetch("/api/warga");
-    if (res.ok) {
-      const json = await res.json();
-      // kalau API mengirim pendapatan format string, coba parse
-      const normalized: WargaItem[] = json.map((w: any) => ({
+    if (!res.ok) return;
+
+    const json = await res.json();
+
+    setWargaList(
+      json.map((w: any) => ({
         id_warga: w.id_warga,
         nik: w.nik,
         nama: w.nama,
-        pendapatan_bulanan:
-          typeof w.pendapatan_bulanan === "number"
-            ? w.pendapatan_bulanan
-            : Number(String(w.pendapatan_bulanan).replace(/\./g, "").replace(/[^0-9]/g, "")) || 0,
+
+        pendapatan_bulanan: toNumberSafe(w.pendapatan_bulanan),
         aset: w.aset ?? "",
         kondisi_rumah: w.kondisi_rumah ?? "",
-        jumlah_tanggungan: Number(w.jumlah_tanggungan) || 0,
-      }));
-      setWargaList(normalized);
-    } else {
-      setWargaList([]);
-    }
+        jumlah_tanggungan: toNumberSafe(w.jumlah_tanggungan),
+
+        perlindungan_kesehatan: w.perlindungan_kesehatan,
+        kondisi_kesehatan: w.kondisi_kesehatan,
+        pendidikan: w.pendidikan,
+        kendaraan: w.kendaraan,
+        daya_listrik: toNumberSafe(w.daya_listrik),
+        luas_rumah: toNumberSafe(w.luas_rumah),
+        usia: toNumberSafe(w.usia),
+        status_pekerjaan: w.status_pekerjaan,
+        jumlah_utang: toNumberSafe(w.jumlah_utang),
+      }))
+    );
+  }
+
+  async function fetchBobot() {
+    const res = await fetch("/api/ahpWeights");
+    if (res.ok) setBobotAHP(await res.json());
   }
 
   useEffect(() => {
     fetchPenilaian();
     fetchWarga();
+    fetchBobot();
   }, []);
+  useEffect(() => {
+    if (bobotAHP.length === 0) return;
 
-  // ketika warga dipilih -> otomatis hitung skor AHP
+    const total = bobotAHP.reduce((sum, b) => sum + Number(b.bobot), 0);
+
+    if (Math.abs(total - 1) > 0.01) {
+      console.warn("⚠️ Total bobot AHP tidak = 1 :", total);
+    }
+  }, [bobotAHP]);
+
+  /* ============================================================
+   * BOBOT DINAMIS
+   * ============================================================ */
+  const bobot = useMemo(() => {
+    const m = mapBobot(bobotAHP);
+
+    return {
+      pendapatan: m["pendapatan"] ?? 0,
+      aset: m["aset"] ?? 0,
+      rumah: m["rumah"] ?? 0,
+      tanggungan: m["tanggungan"] ?? 0,
+
+      perlindungan: m["perlindungan_kesehatan"] ?? 0,
+      kesehatan: m["kondisi_kesehatan"] ?? 0,
+      pendidikan: m["pendidikan"] ?? 0,
+      kendaraan: m["kendaraan"] ?? 0,
+      listrik: m["daya_listrik"] ?? 0,
+      usia: m["usia"] ?? 0,
+      luas: m["luas_rumah"] ?? 0,
+      pekerjaan: m["status_pekerjaan"] ?? 0,
+    };
+  }, [bobotAHP]);
+
+  /* ============================================================
+   * HITUNG AHP
+   * ============================================================ */
+  function hitungAHP(s: {
+    p: number;
+    a: number;
+    r: number;
+    t: number;
+    perlindungan: number;
+    kesehatan: number;
+    pendidikan: number;
+    kendaraan: number;
+    listrik: number;
+    usia: number;
+    luas: number;
+    pekerjaan: number;
+  }) {
+    return (
+      s.p * bobot.pendapatan +
+      s.a * bobot.aset +
+      s.r * bobot.rumah +
+      s.t * bobot.tanggungan +
+      s.perlindungan * bobot.perlindungan +
+      s.kesehatan * bobot.kesehatan +
+      s.pendidikan * bobot.pendidikan +
+      s.kendaraan * bobot.kendaraan +
+      s.listrik * bobot.listrik +
+      s.usia * bobot.usia +
+      s.luas * bobot.luas +
+      s.pekerjaan * bobot.pekerjaan
+    );
+  }
+
+  /* ============================================================
+   * AUTO FILL SAAT PILIH WARGA
+   * ============================================================ */
   const selected = watch("id_warga");
+
   useEffect(() => {
     if (!selected) return;
-    const id = Number(selected);
-    const w = wargaList.find((x) => Number(x.id_warga) === id);
+
+    const w = wargaList.find((x) => x.id_warga === Number(selected));
     if (!w) return;
 
-    const sp = skorPendapatanFromNumber(String(w.pendapatan_bulanan));
-    const sa = skorAset(String(w.aset));
-    const sr = skorRumah(String(w.kondisi_rumah));
-    const st = skorTanggungan(Number(w.jumlah_tanggungan));
+    const sp = skorPendapatanFromString(String(w.pendapatan_bulanan));
+    const sa = skorAset(w.aset);
+    const sr = skorRumah(w.kondisi_rumah);
+    const st = skorTanggungan(w.jumlah_tanggungan);
+    const skor_utang = skorUtangFromString(String(w.jumlah_utang));
 
-    // isi skor di form (angka)
+    const skor_perlindungan = w.perlindungan_kesehatan ? 5 : 1;
+    const skor_kondisi_kesehatan =
+      w.kondisi_kesehatan === "Sakit Berat"
+        ? 5
+        : w.kondisi_kesehatan === "Kelainan/difable"
+        ? 4
+        : w.kondisi_kesehatan === "Tuna netra/rungu/wicara"
+        ? 3
+        : w.kondisi_kesehatan === "Riwayat Penyakit"
+        ? 2
+        : 1;
+
+    const skor_pendidikan =
+      w.pendidikan === "SD"
+        ? 5
+        : w.pendidikan === "SMP"
+        ? 4
+        : w.pendidikan === "SMA"
+        ? 3
+        : w.pendidikan === "D3/S1"
+        ? 2
+        : 1;
+
+    const skor_kendaraan =
+      w.kendaraan === "Tidak Punya"
+        ? 5
+        : w.kendaraan === "Sepeda"
+        ? 4
+        : w.kendaraan === "Motor"
+        ? 3
+        : w.kendaraan === "Mobil"
+        ? 2
+        : 1;
+
+    const dayaListrik = w.daya_listrik ?? 0;
+    const usia = w.usia ?? 0;
+    const luasRumah = w.luas_rumah ?? 0;
+
+    const skor_daya_listrik =
+      dayaListrik <= 450 ? 5 : dayaListrik <= 900 ? 3 : 1;
+
+    const skor_usia = usia >= 60 ? 5 : usia >= 40 ? 3 : 1;
+
+    const skor_luas_rumah = luasRumah <= 30 ? 5 : luasRumah <= 60 ? 3 : 1;
+
+    const skor_status_pekerjaan =
+      w.status_pekerjaan === "Tidak Bekerja"
+        ? 5
+        : w.status_pekerjaan === "Serabutan"
+        ? 4
+        : w.status_pekerjaan === "swasta"
+        ? 3
+        : w.status_pekerjaan === "pns"
+        ? 2
+        : 1;
+
+    const total = Number(
+      hitungAHP({
+        p: sp,
+        a: sa,
+        r: sr,
+        t: st,
+        perlindungan: skor_perlindungan,
+        kesehatan: skor_kondisi_kesehatan,
+        pendidikan: skor_pendidikan,
+        kendaraan: skor_kendaraan,
+        listrik: skor_daya_listrik,
+        usia: skor_usia,
+        luas: skor_luas_rumah,
+        pekerjaan: skor_status_pekerjaan,
+      }).toFixed(3)
+    );
+
+    const kat = kategoriByTotal(total);
+
+    // Masukkan ke form
     setValue("skor_pendapatan", sp);
     setValue("skor_aset", sa);
     setValue("skor_rumah", sr);
     setValue("skor_tanggungan", st);
 
-    const total = hitungAHP(sp, sa, sr, st);
-    const totalFix = Number(total.toFixed(3));
+    setValue("skor_perlindungan", skor_perlindungan);
+    setValue("skor_kondisi_kesehatan", skor_kondisi_kesehatan);
+    setValue("skor_pendidikan", skor_pendidikan);
+    setValue("skor_kendaraan", skor_kendaraan);
+    setValue("skor_daya_listrik", skor_daya_listrik);
+    setValue("skor_usia", skor_usia);
+    setValue("skor_luas_rumah", skor_luas_rumah);
+    setValue("skor_status_pekerjaan", skor_status_pekerjaan);
+    setValue("skor_utang", skor_utang);
 
-    const kat = kategoriByTotal(totalFix);
-    const rek = rekomendasiByKategori(kat);
-    const layak = kat !== "Mampu" ? "Layak" : "Tidak Layak";
-
-    setValue("skor_total", totalFix);
+    setValue("skor_total", total);
     setValue("kategori_asnaf", kat);
-    setValue("rekomendasi_bantuan", rek);
-    setValue("status_layak", layak);
-  }, [selected, wargaList, setValue]);
+    setValue("rekomendasi_bantuan", rekomendasiByKategori(kat));
+    setValue(
+      "status_layak",
+      kat !== "Mampu / Tidak Layak" ? "Layak" : "Tidak Layak"
+    );
+  }, [selected, wargaList, bobot, setValue]);
 
-  // submit ke backend (simpan penilaian)
+  /* ============================================================
+   * SUBMIT
+   * ============================================================ */
   async function submit(form: PenilaianPayload) {
-    // pastikan id_warga ada
+    setError(null);
+
     if (!form.id_warga) {
-      alert("Pilih warga terlebih dahulu");
+      setError("Warga belum dipilih");
       return;
     }
 
-    // pastikan skor_total sudah terisi (kalau tidak, hitung lagi)
-    let payload = { ...form };
-    if (payload.skor_total === undefined || payload.skor_total === null) {
-      // recompute from form values
-      const sp = Number(payload.skor_pendapatan) || 0;
-      const sa = Number(payload.skor_aset) || 0;
-      const sr = Number(payload.skor_rumah) || 0;
-      const st = Number(payload.skor_tanggungan) || 0;
-      payload.skor_total = Number(hitungAHP(sp, sa, sr, st).toFixed(3));
-      payload.kategori_asnaf = kategoriByTotal(payload.skor_total);
-      payload.rekomendasi_bantuan = rekomendasiByKategori(payload.kategori_asnaf!);
-      payload.status_layak = payload.kategori_asnaf !== "Mampu" ? "Layak" : "Tidak Layak";
-    }
+    const method = editingId ? "PUT" : "POST";
 
     const res = await fetch("/api/penilaian", {
-      method: "POST",
+      method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...form,
+        id_penilaian: editingId,
+        tanggal_penilaian: new Date().toISOString(),
+      }),
     });
 
     if (!res.ok) {
-      const err = await res.text();
-      alert("Gagal menyimpan penilaian: " + err);
-    } else {
-      reset();
-      setEditingId(null);
-      fetchPenilaian();
+      setError("Gagal menyimpan data");
+      return;
     }
+
+    reset();
+    setEditingId(null);
+    fetchPenilaian();
   }
 
   function editRow(row: PenilaianPayload) {
@@ -241,27 +498,65 @@ export default function PenilaianPage() {
   }
 
   async function removeRow(id_penilaian: number) {
-    const res = await fetch("/api/penilaian", {
+    await fetch("/api/penilaian", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id_penilaian }),
     });
-    if (!res.ok) {
-      const t = await res.text();
-      alert("Gagal hapus: " + t);
-    } else {
-      fetchPenilaian();
-    }
+    fetchPenilaian();
   }
 
+  /* ============================================================
+   * UI
+   * ============================================================ */
   return (
     <MainLayout>
-      <h1 className="text-xl font-bold mb-4">Manajemen Penilaian (AHP Otomatis)</h1>
+      <h1 className="text-xl font-bold mb-4">
+        Manajemen Penilaian Bantuan (AHP Bobot Dinamis)
+      </h1>
+
+      {error && (
+        <div className="mb-4 text-red-600 text-sm border p-2 rounded">
+          {error}
+        </div>
+      )}
+      {/* STATISTIK */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="border rounded p-4 bg-white">
+          <p className="text-sm text-gray-500">Total Penilaian</p>
+          <p className="text-2xl font-bold">{statistikKelayakan.total}</p>
+        </div>
+
+        <div className="border rounded p-4 bg-green-50">
+          <p className="text-sm text-green-700">Layak</p>
+          <p className="text-2xl font-bold text-green-700">
+            {statistikKelayakan.layak}
+          </p>
+          <p className="text-sm text-green-600">
+            {statistikKelayakan.persenLayak}%
+          </p>
+        </div>
+
+        <div className="border rounded p-4 bg-red-50">
+          <p className="text-sm text-red-700">Tidak Layak</p>
+          <p className="text-2xl font-bold text-red-700">
+            {statistikKelayakan.tidakLayak}
+          </p>
+          <p className="text-sm text-red-600">
+            {statistikKelayakan.persenTidakLayak}%
+          </p>
+        </div>
+      </div>
 
       {/* FORM */}
-      <form className="grid grid-cols-3 gap-3 mb-6" onSubmit={handleSubmit(submit)}>
+      {/* FORM */}
+      <form
+        className="grid grid-cols-3 gap-3 mb-6"
+        onSubmit={handleSubmit(submit)}
+      >
+        {/* PILIH WARGA */}
         <select
-          className="border p-2 rounded"
+          className="border p-2 rounded col-span-3"
           {...register("id_warga", { valueAsNumber: true })}
           defaultValue=""
         >
@@ -273,65 +568,173 @@ export default function PenilaianPage() {
           ))}
         </select>
 
-        <Input readOnly {...register("skor_pendapatan", { valueAsNumber: true })} placeholder="Skor Pendapatan" />
-        <Input readOnly {...register("skor_aset", { valueAsNumber: true })} placeholder="Skor Aset" />
-        <Input readOnly {...register("skor_rumah", { valueAsNumber: true })} placeholder="Skor Rumah" />
-        <Input readOnly {...register("skor_tanggungan", { valueAsNumber: true })} placeholder="Skor Tanggungan" />
+        {/* SKOR AHP LAMA */}
+        <Input
+          readOnly
+          {...register("skor_pendapatan")}
+          placeholder="Skor Pendapatan"
+        />
+        <Input readOnly {...register("skor_aset")} placeholder="Skor Aset" />
+        <Input readOnly {...register("skor_rumah")} placeholder="Skor Rumah" />
+        <Input
+          readOnly
+          {...register("skor_tanggungan")}
+          placeholder="Skor Tanggungan"
+        />
+        <Input readOnly {...register("skor_utang")} placeholder="Skor Hutang" />
 
-        <Input readOnly {...register("skor_total", { valueAsNumber: true })} placeholder="Total" />
-        <Input readOnly {...register("kategori_asnaf")} placeholder="Kategori" />
-        <Input readOnly {...register("rekomendasi_bantuan")} placeholder="Rekomendasi" />
-        <Input readOnly {...register("status_layak")} placeholder="Status" />
+        {/* SKOR BARU */}
+        <Input
+          readOnly
+          {...register("skor_perlindungan")}
+          placeholder="Skor Perlindungan"
+        />
+        <Input
+          readOnly
+          {...register("skor_kondisi_kesehatan")}
+          placeholder="Skor Kesehatan"
+        />
+        <Input
+          readOnly
+          {...register("skor_pendidikan")}
+          placeholder="Skor Pendidikan"
+        />
+        <Input
+          readOnly
+          {...register("skor_kendaraan")}
+          placeholder="Skor Kendaraan"
+        />
+        <Input
+          readOnly
+          {...register("skor_daya_listrik")}
+          placeholder="Skor Daya Listrik"
+        />
+        <Input readOnly {...register("skor_usia")} placeholder="Skor Usia" />
+        <Input
+          readOnly
+          {...register("skor_luas_rumah")}
+          placeholder="Skor Luas Rumah"
+        />
+        <Input
+          readOnly
+          {...register("skor_status_pekerjaan")}
+          placeholder="Skor Pekerjaan"
+        />
 
-        <Button className="col-span-3" type="submit">
-          {editingId ? "Update Penilaian" : "Tambah Penilaian"}
+        {/* HASIL AKHIR */}
+        <Input readOnly {...register("skor_total")} placeholder="Skor Total" />
+        <Input
+          readOnly
+          {...register("kategori_asnaf")}
+          placeholder="Kategori"
+        />
+        <Input
+          readOnly
+          {...register("rekomendasi_bantuan")}
+          placeholder="Rekomendasi"
+        />
+        <Input
+          readOnly
+          {...register("status_layak")}
+          placeholder="Status Layak"
+        />
+
+        {/* BUTTON */}
+        <Button className="col-span-3" disabled={loading} type="submit">
+          {editingId ? "Update Penilaian" : "Simpan Penilaian"}
         </Button>
       </form>
 
-      {/* TABLE DATA */}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>ID</TableHead>
-            <TableHead>Warga</TableHead>
-            <TableHead>Pendapatan</TableHead>
-            <TableHead>Aset</TableHead>
-            <TableHead>Rumah</TableHead>
-            <TableHead>Tanggungan</TableHead>
-            <TableHead>Total</TableHead>
-            <TableHead>Kategori</TableHead>
-            <TableHead>Rekom</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Aksi</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {data.map((row) => (
-            <TableRow key={row.id_penilaian}>
-              <TableCell>{row.id_penilaian}</TableCell>
-              <TableCell>{row.warga?.nama ?? "-"}</TableCell>
-              <TableCell>{row.skor_pendapatan}</TableCell>
-              <TableCell>{row.skor_aset}</TableCell>
-              <TableCell>{row.skor_rumah}</TableCell>
-              <TableCell>{row.skor_tanggungan}</TableCell>
-              <TableCell>{row.skor_total}</TableCell>
-              <TableCell>{row.kategori_asnaf}</TableCell>
-              <TableCell>{row.rekomendasi_bantuan}</TableCell>
-              <TableCell>{row.status_layak}</TableCell>
-              <TableCell>
-                <Button onClick={() => editRow(row)}>Edit</Button>
-                <Button
-                  className="ml-2"
-                  variant="destructive"
-                  onClick={() => removeRow(row.id_penilaian!)}
-                >
-                  Hapus
-                </Button>
-              </TableCell>
+      {/* TABLE */}
+      {/* TABLE */}
+      <div className="w-full overflow-x-auto mt-6 border rounded-lg">
+        <Table className="min-w-max text-sm">
+          <TableHeader>
+            <TableRow className="bg-gray-100">
+              <TableHead className="whitespace-nowrap">ID</TableHead>
+              <TableHead className="whitespace-nowrap">Warga</TableHead>
+
+              {/* SKOR AHP LAMA */}
+              <TableHead className="whitespace-nowrap">Pendapatan</TableHead>
+              <TableHead className="whitespace-nowrap">Aset</TableHead>
+              <TableHead className="whitespace-nowrap">Rumah</TableHead>
+              <TableHead className="whitespace-nowrap">Tanggungan</TableHead>
+              <TableHead className="whitespace-nowrap">Hutang</TableHead>
+
+              {/* SKOR BARU */}
+              <TableHead className="whitespace-nowrap">Perlindungan</TableHead>
+              <TableHead className="whitespace-nowrap">Kesehatan</TableHead>
+              <TableHead className="whitespace-nowrap">Pendidikan</TableHead>
+              <TableHead className="whitespace-nowrap">Kendaraan</TableHead>
+              <TableHead className="whitespace-nowrap">Listrik</TableHead>
+              <TableHead className="whitespace-nowrap">Usia</TableHead>
+              <TableHead className="whitespace-nowrap">Luas</TableHead>
+              <TableHead className="whitespace-nowrap">Pekerjaan</TableHead>
+
+              <TableHead className="whitespace-nowrap">Total</TableHead>
+              <TableHead className="whitespace-nowrap">Kategori</TableHead>
+              <TableHead className="whitespace-nowrap">Rekomendasi</TableHead>
+              <TableHead className="whitespace-nowrap">Status</TableHead>
+              <TableHead className="whitespace-nowrap">Aksi</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+
+          <TableBody>
+            {data.map((row) => (
+              <TableRow key={row.id_penilaian}>
+                <TableCell>{row.id_penilaian}</TableCell>
+                <TableCell>{row.warga?.nama}</TableCell>
+
+                {/* SKOR LAMA */}
+                <TableCell>{row.skor_pendapatan}</TableCell>
+                <TableCell>{row.skor_aset}</TableCell>
+                <TableCell>{row.skor_rumah}</TableCell>
+                <TableCell>{row.skor_tanggungan}</TableCell>
+                <TableCell>{row.skor_utang}</TableCell>
+                {/* SKOR BARU */}
+                <TableCell>{row.skor_perlindungan}</TableCell>
+                <TableCell>{row.skor_kondisi_kesehatan}</TableCell>
+                <TableCell>{row.skor_pendidikan}</TableCell>
+                <TableCell>{row.skor_kendaraan}</TableCell>
+                <TableCell>{row.skor_daya_listrik}</TableCell>
+                <TableCell>{row.skor_usia}</TableCell>
+                <TableCell>{row.skor_luas_rumah}</TableCell>
+                <TableCell>{row.skor_status_pekerjaan}</TableCell>
+
+                <TableCell className="font-semibold">
+                  {row.skor_total}
+                </TableCell>
+                <TableCell>{row.kategori_asnaf}</TableCell>
+                <TableCell>{row.rekomendasi_bantuan}</TableCell>
+                <TableCell>
+                  <span
+                    className={`px-2 py-1 rounded text-xs font-semibold ${
+                      row.status_layak === "Layak"
+                        ? "bg-green-100 text-green-700"
+                        : "bg-red-100 text-red-700"
+                    }`}
+                  >
+                    {row.status_layak}
+                  </span>
+                </TableCell>
+
+                <TableCell className="flex gap-2 min-w-max">
+                  <Button size="sm" onClick={() => editRow(row)}>
+                    Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => removeRow(row.id_penilaian!)}
+                  >
+                    Hapus
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </MainLayout>
   );
 }
