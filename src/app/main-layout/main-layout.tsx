@@ -26,6 +26,7 @@ import { Separator } from "@/components/ui/separator";
 
 import Cookie from "js-cookie";
 import { createContext, useContext, useEffect, useState } from "react";
+
 type Users = {
   id_users: number;
   username: string;
@@ -49,7 +50,7 @@ type Penilaian = {
 };
 
 import {
-  Users as UsersIcon, // Ganti nama untuk menghindari konflik
+  Users as UsersIcon,
   Home,
   FileText,
   CheckCircle,
@@ -60,8 +61,8 @@ import {
   Activity,
   UserCheck,
   UserX,
-  Clock, // Icon untuk status menunggu
-  AlertCircle, // Icon untuk status ditolak
+  Clock,
+  AlertCircle,
 } from "lucide-react";
 
 /* ============================================================
@@ -89,15 +90,18 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
   const [warga, setWarga] = useState<Warga[]>([]);
   const [penilaian, setPenilaian] = useState<Penilaian[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   /* === USER DARI COOKIE === */
   useEffect(() => {
-    const raw = Cookie.get("user");
-    if (!raw || raw === "undefined") return;
-
     try {
+      const raw = Cookie.get("user");
+      if (!raw || raw === "undefined") return;
+      
       setUsers(JSON.parse(raw));
-    } catch {
+    } catch (err) {
+      console.error("Error parsing user cookie:", err);
       setUsers(null);
     }
   }, []);
@@ -106,10 +110,22 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
   useEffect(() => {
     const fetchAll = async () => {
       try {
+        setLoading(true);
+        setError(null);
+        
         const [wargaRes, penilaianRes] = await Promise.all([
           fetch("/api/warga"),
           fetch("/api/penilaian"),
         ]);
+
+        // Check if responses are OK
+        if (!wargaRes.ok) {
+          throw new Error(`Failed to fetch warga data: ${wargaRes.status}`);
+        }
+        
+        if (!penilaianRes.ok) {
+          throw new Error(`Failed to fetch penilaian data: ${penilaianRes.status}`);
+        }
 
         const wargaData = await wargaRes.json();
         const penilaianData = await penilaianRes.json();
@@ -118,12 +134,21 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
         setPenilaian(Array.isArray(penilaianData) ? penilaianData : []);
       } catch (err) {
         console.error("Gagal memuat data", err);
+        setError(err instanceof Error ? err.message : "Gagal memuat data");
+        // Set empty arrays to prevent errors
+        setWarga([]);
+        setPenilaian([]);
       } finally {
         setLoading(false);
       }
     };
 
     fetchAll();
+  }, []);
+
+  // Fix hydration issue
+  useEffect(() => {
+    setMounted(true);
   }, []);
 
   /* === HITUNG TOTAL === */
@@ -154,6 +179,54 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
     totalPenilaian > 0 ? (totalTidakLayak / totalPenilaian) * 100 : 0;
   const persentaseLayakString = persentaseLayakNumber.toFixed(1);
   const persentaseTidakLayakString = persentaseTidakLayakNumber.toFixed(1);
+
+  // Don't render until mounted to avoid hydration mismatch
+  if (!mounted) {
+    return (
+      <SidebarProvider defaultOpen>
+        <GlobalContext.Provider value={{ users }}>
+          <AppSidebar />
+          <SidebarInset>
+            <header className="h-16 flex shrink-0 items-center gap-2 border-b bg-background shadow-sm">
+              <div className="flex items-center gap-2 px-4">
+                <SidebarTrigger className="-ml-1" />
+                <BreadcrumbSeparator className="hidden md:block" />
+                <Breadcrumb>
+                  <BreadcrumbList>
+                    <BreadcrumbItem className="hidden md:block">
+                      <BreadcrumbLink
+                        href="/"
+                        className="flex items-center gap-2"
+                      >
+                        <Home className="h-4 w-4" />
+                        Sistem Informasi Bantuan Desa
+                      </BreadcrumbLink>
+                    </BreadcrumbItem>
+                  </BreadcrumbList>
+                </Breadcrumb>
+              </div>
+              {users && (
+                <div className="ml-auto px-4 flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                    <UsersIcon className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="text-sm">
+                    <p className="font-medium">{users.username}</p>
+                    <p className="text-xs text-muted-foreground">{users.role}</p>
+                  </div>
+                </div>
+              )}
+            </header>
+            <main className="flex-1 space-y-6 p-6 bg-muted/30">
+              <div className="flex items-center justify-center h-64">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              </div>
+            </main>
+          </SidebarInset>
+        </GlobalContext.Provider>
+      </SidebarProvider>
+    );
+  }
 
   return (
     <SidebarProvider defaultOpen>
@@ -197,6 +270,12 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
 
           {/* ================= CONTENT ================= */}
           <main className="flex-1 space-y-6 p-6 bg-muted/30">
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+                <p>{error}</p>
+              </div>
+            )}
+            
             {children}
 
             {/* ================= DASHBOARD TOTAL ================= */}
@@ -350,7 +429,7 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
             </div>
 
             {/* ================= TABS UNTUK VALIDASI ================= */}
-            <Tabs defaultValue="kelayakan" className="space-y-4">
+            <Tabs defaultValue="kelayakan" className="space-y-4" key="main-layout-tabs">
               <TabsList>
                 <TabsTrigger value="kelayakan">Data Kelayakan</TabsTrigger>
                 <TabsTrigger value="validasi">Status Validasi</TabsTrigger>
@@ -403,44 +482,52 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
                             </tr>
                           </thead>
                           <tbody>
-                            {warga.slice(0, 5).map((w) => {
-                              const penilaianWarga = penilaian.find(
-                                (p) => p.id_warga === w.id_warga
-                              );
+                            {warga.length > 0 ? (
+                              warga.slice(0, 5).map((w) => {
+                                const penilaianWarga = penilaian.find(
+                                  (p) => p.id_warga === w.id_warga
+                                );
 
-                              return (
-                                <tr
-                                  key={w.id_warga}
-                                  className="border-b hover:bg-muted/50 transition-colors"
-                                >
-                                  <td className="px-4 py-3">{w.nik}</td>
-                                  <td className="px-4 py-3 font-medium">
-                                    {w.nama}
-                                  </td>
-                                  <td className="px-4 py-3">{w.usia ?? "-"}</td>
-                                  <td className="px-4 py-3">
-                                    {w.pendapatan_bulanan ?? "-"}
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    {w.jumlah_tanggungan ?? 0}
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    {penilaianWarga ? (
-                                      <StatusBadge
-                                        status={
-                                          penilaianWarga.status_layak ??
-                                          "BELUM_DINILAI"
-                                        }
-                                      />
-                                    ) : (
-                                      <Badge variant="outline">
-                                        Belum Dinilai
-                                      </Badge>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
+                                return (
+                                  <tr
+                                    key={w.id_warga}
+                                    className="border-b hover:bg-muted/50 transition-colors"
+                                  >
+                                    <td className="px-4 py-3">{w.nik}</td>
+                                    <td className="px-4 py-3 font-medium">
+                                      {w.nama}
+                                    </td>
+                                    <td className="px-4 py-3">{w.usia ?? "-"}</td>
+                                    <td className="px-4 py-3">
+                                      {w.pendapatan_bulanan ?? "-"}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      {w.jumlah_tanggungan ?? 0}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      {penilaianWarga ? (
+                                        <StatusBadge
+                                          status={
+                                            penilaianWarga.status_layak ??
+                                            "BELUM_DINILAI"
+                                          }
+                                        />
+                                      ) : (
+                                        <Badge variant="outline">
+                                          Belum Dinilai
+                                        </Badge>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            ) : (
+                              <tr>
+                                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                                  Tidak ada data warga
+                                </td>
+                              </tr>
+                            )}
                           </tbody>
                         </table>
                         {warga.length > 5 && (
@@ -505,7 +592,7 @@ function StatCard({
   description,
   trend,
   trendUp = true,
-  trendColor = "text-green-600", // Tambahkan prop untuk warna trend
+  trendColor = "text-green-600",
 }: {
   title: string;
   value: number;
