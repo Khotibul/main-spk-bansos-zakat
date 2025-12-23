@@ -277,7 +277,7 @@ export default function WargaPage() {
     reset,
     handleSubmit,
     formState: { errors },
-    trigger, // Tambahkan trigger untuk validasi manual
+    trigger,
   } = useForm<WargaRow>();
   const [data, setData] = useState<WargaRow[]>([]);
   const [action, setAction] = useState<"Create" | undefined>(undefined);
@@ -289,8 +289,6 @@ export default function WargaPage() {
   const [importing, setImporting] = useState(false);
   const [bulkReport, setBulkReport] = useState<any | null>(null);
   
-  // Hapus fungsi onInvalid yang lama, karena kita akan menampilkan error di bawah setiap field
-
   const table = useReactTable({
     data,
     columns,
@@ -301,59 +299,60 @@ export default function WargaPage() {
 
   // fetch warga
   async function fetchWarga() {
-    const res = await fetch("/api/warga");
-    const json = await res.json().catch(() => []);
-    setData(json);
+    try {
+      const res = await fetch("/api/warga");
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      const json = await res.json();
+      setData(Array.isArray(json) ? json : []);
+    } catch (error) {
+      console.error("Error fetching warga data:", error);
+      setData([]);
+    }
   }
 
   useEffect(() => {
-    fetch("/api/warga")
-      .then((res) => res.json())
-      .then((json) => setData(Array.isArray(json) ? json : []))
-      .catch(() => setData([]));
+    fetchWarga();
   }, []);
 
   // single form submit (create/upsert)
   async function submit(form: WargaRow) {
     setPosting(true);
 
-    if (!/^\d{16}$/.test(String(form.nik))) {
-      alert("NIK harus 16 digit angka");
-      setPosting(false);
-      return;
-    }
-
-    // 2. BUAT PAYLOAD YANG BERSIH DAN KONSISTEN
-    // Hindari mengirim field yang 'undefined' jika server tidak menerimanya.
-    // Kirim string kosong "" untuk field opsional yang tidak diisi.
-    const payload = {
-      nik: String(form.nik),
-      nama: String(form.nama || ""),
-      nama_ibu: String(form.nama_ibu || ""),
-      usia: form.usia ? Number(form.usia) : null, // Backend mungkin menerima null untuk usia kosong
-      alamat: String(form.alamat || ""),
-      kecamatan: String(form.kecamatan || ""),
-      kabupaten: String(form.kabupaten || ""), // Pastikan ini benar
-      perlindungan_kesehatan: String(form.perlindungan_kesehatan || ""),
-      kondisi_kesehatan: String(form.kondisi_kesehatan || ""),
-      pendidikan: String(form.pendidikan || ""),
-      kendaraan: String(form.kendaraan || ""),
-      daya_listrik: String(form.daya_listrik || ""),
-      luas_rumah: form.luas_rumah ? Number(form.luas_rumah) : null,
-      pendapatan_bulanan: String(form.pendapatan_bulanan || ""),
-      jumlah_tanggungan: form.jumlah_tanggungan ? Number(form.jumlah_tanggungan) : 0,
-      aset: String(form.aset || ""),
-      status_pekerjaan: String(form.status_pekerjaan || ""),
-      kondisi_rumah: String(form.kondisi_rumah || ""),
-      jumlah_utang: String(form.jumlah_utang || ""),
-      pengeluaran_wajib: form.pengeluaran_wajib ? Number(form.pengeluaran_wajib) : 0,
-      tanggal_input: form.tanggal_input ? String(form.tanggal_input) : new Date().toISOString().slice(0, 10),
-    };
-
-    // 3. CETAK PAYLOAD KE CONSOLE UNTUK DEBUGGING
-    console.log("Frontend: Data yang akan dikirim:", payload);
-
     try {
+      // Validasi NIK
+      if (!/^\d{16}$/.test(String(form.nik))) {
+        throw new Error("NIK harus 16 digit angka");
+      }
+
+      // Buat payload yang bersih dan konsisten
+      const payload = {
+        nik: String(form.nik),
+        nama: String(form.nama || ""),
+        nama_ibu: String(form.nama_ibu || ""),
+        usia: form.usia ? Number(form.usia) : null,
+        alamat: String(form.alamat || ""),
+        kecamatan: String(form.kecamatan || ""),
+        kabupaten: String(form.kabupaten || ""),
+        perlindungan_kesehatan: String(form.perlindungan_kesehatan || ""),
+        kondisi_kesehatan: String(form.kondisi_kesehatan || ""),
+        pendidikan: String(form.pendidikan || ""),
+        kendaraan: String(form.kendaraan || ""),
+        daya_listrik: String(form.daya_listrik || ""),
+        luas_rumah: form.luas_rumah ? Number(form.luas_rumah) : null,
+        pendapatan_bulanan: String(form.pendapatan_bulanan || ""),
+        jumlah_tanggungan: form.jumlah_tanggungan ? Number(form.jumlah_tanggungan) : 0,
+        aset: String(form.aset || ""),
+        status_pekerjaan: String(form.status_pekerjaan || ""),
+        kondisi_rumah: String(form.kondisi_rumah || ""),
+        jumlah_utang: String(form.jumlah_utang || ""),
+        pengeluaran_wajib: form.pengeluaran_wajib ? Number(form.pengeluaran_wajib) : 0,
+        tanggal_input: form.tanggal_input ? String(form.tanggal_input) : new Date().toISOString().slice(0, 10),
+      };
+
+      console.log("Frontend: Data yang akan dikirim:", payload);
+
       const response = await fetch("/api/warga", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -362,31 +361,25 @@ export default function WargaPage() {
 
       console.log("Frontend: Response diterima. Status:", response.status);
 
-      // Baca response sebagai TEKS terlebih dahulu untuk debugging
       const responseText = await response.text();
       console.log("Frontend: Response body (raw text):", responseText);
 
-      // Jika response kosong, ini adalah masalah
       if (!responseText) {
         throw new Error(`Server mengembalikan response kosong dengan status: ${response.status}`);
       }
 
-      // Coba parsing teks menjadi JSON
       let responseData;
       try {
         responseData = JSON.parse(responseText);
       } catch (e) {
-        // Jika gagal parsing, berarti server mengirim sesuatu yang bukan JSON
         throw new Error(`Response dari server bukan JSON. Isinya: "${responseText}"`);
       }
 
-      // Jika status response tidak OK (bukan 2xx), maka itu adalah error
       if (!response.ok) {
         console.error("Frontend: Error dari server:", responseData);
         throw new Error(responseData.message || `Server error dengan status: ${response.status}`);
       }
 
-      // Jika berhasil
       console.log("Frontend: Sukses!", responseData);
       await fetchWarga();
       reset();
@@ -411,17 +404,22 @@ export default function WargaPage() {
 
     if (!f) return;
 
-    const dataBuf = await f.arrayBuffer();
-    const workbook = XLSX.read(dataBuf, { type: "array" });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: null });
+    try {
+      const dataBuf = await f.arrayBuffer();
+      const workbook = XLSX.read(dataBuf, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: null });
 
-    const preview: PreviewRow[] = rawRows.map((r, idx) => {
-      const { valid, errors, normalized } = validateRow(r);
-      return { idx, data: normalized, valid, errors };
-    });
+      const preview: PreviewRow[] = rawRows.map((r, idx) => {
+        const { valid, errors, normalized } = validateRow(r);
+        return { idx, data: normalized, valid, errors };
+      });
 
-    setPreviewRows(preview);
+      setPreviewRows(preview);
+    } catch (error) {
+      console.error("Error parsing file:", error);
+      alert("Error parsing file. Pastikan file adalah format Excel yang valid.");
+    }
   };
 
   /* ======================
@@ -433,13 +431,13 @@ export default function WargaPage() {
       nama: "Nama Lengkap",
       alamat: "Alamat jalan ...",
       kecamatan: "Contoh Kecamatan",
-      kebupaten: "kabupaten",
+      kabupaten: "Contoh Kabupaten", // Fix typo here
       pendapatan_bulanan: "<500.000-1.000.000", // must be one of options
       jumlah_tanggungan: 2,
       aset: "Tanah Pribadi",
-      status_pekerjaan: "swasta",
-      kondisi_rumah: "cukup layak",
-      jumlah_utang: "tidak ada",
+      status_pekerjaan: "Swasta",
+      kondisi_rumah: "Cukup Layak",
+      jumlah_utang: "Tidak Punya",
       pengeluaran_wajib: 300000,
       tanggal_input: new Date().toISOString().slice(0, 10),
     };
@@ -458,6 +456,7 @@ export default function WargaPage() {
      ====================== */
   const importFileToServer = async () => {
     if (!file) return alert("Pilih file terlebih dahulu");
+    
     // warn user if there are invalid rows
     const invalidCount = previewRows.filter((r) => !r.valid).length;
     if (invalidCount > 0) {
@@ -473,24 +472,32 @@ export default function WargaPage() {
     setImporting(true);
     setBulkReport(null);
 
-    const fd = new FormData();
-    fd.append("file", file);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
 
-    const res = await fetch("/api/warga/import", {
-      method: "POST",
-      body: fd,
-    });
+      const res = await fetch("/api/warga/import", {
+        method: "POST",
+        body: fd,
+      });
 
-    const json = await res.json().catch(() => ({ error: "Invalid response" }));
-    setBulkReport(json);
-    setImporting(false);
-    fetchWarga();
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+
+      const json = await res.json();
+      setBulkReport(json);
+      fetchWarga();
+    } catch (error) {
+      console.error("Error importing file:", error);
+      setBulkReport({ error: error instanceof Error ? error.message : "Unknown error" });
+    } finally {
+      setImporting(false);
+    }
   };
 
   /* ======================
-     Import only valid rows by sending JSON -> /api/warga/bulk (if you have)
-     If your server does not have /api/warga/bulk, this button can be ignored.
-     We'll still implement optional POST to /api/warga/bulk
+     Import only valid rows by sending JSON -> /api/warga/bulk
      ====================== */
   const importValidRowsJson = async () => {
     const validRows = previewRows.filter((r) => r.valid).map((r) => r.data);
@@ -498,42 +505,52 @@ export default function WargaPage() {
       return alert("Tidak ada baris valid untuk diimport");
 
     setImporting(true);
-    const res = await fetch("/api/warga/bulk", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rows: validRows }),
-    });
+    try {
+      const res = await fetch("/api/warga/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: validRows }),
+      });
 
-    const json = await res.json().catch(() => ({ error: "Invalid response" }));
-    setBulkReport(json);
-    setImporting(false);
-    fetchWarga();
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+
+      const json = await res.json();
+      setBulkReport(json);
+      fetchWarga();
+    } catch (error) {
+      console.error("Error importing valid rows:", error);
+      setBulkReport({ error: error instanceof Error ? error.message : "Unknown error" });
+    } finally {
+      setImporting(false);
+    }
   };
 
   /* ======================
      Delete helper (single)
      ====================== */
   async function deleteWarga(nik: string) {
-  if (!confirm("Hapus warga ini?")) return;
-  
-  try {
-    const response = await fetch("/api/warga", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nik }),
-    });
+    if (!confirm("Hapus warga ini?")) return;
     
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    try {
+      const response = await fetch("/api/warga", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nik }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+      }
+      
+      fetchWarga();
+    } catch (error) {
+      console.error("Error deleting warga:", error);
+      alert(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
-    
-    fetchWarga();
-  } catch (error) {
-    console.error("Error deleting warga:", error);
-    alert(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
-}
 
   // Fungsi untuk validasi manual saat dropdown berubah
   const handleDropdownChange = (fieldName: string) => {

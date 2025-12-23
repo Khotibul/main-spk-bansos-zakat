@@ -124,11 +124,11 @@ function skorPendapatanFromString(p?: string): number {
 function skorAset(a?: any): number {
   const aset = String(a ?? "").toLowerCase();
 
-  if (aset === "Tidak Punya") return 5;
-  if (aset === "Kost") return 4;
-  if (aset === "Tanah Sewa") return 3;
-  if (aset === "Tanah Pribadi") return 2;
-  if (aset.includes("Tanah Perkebunan/Pertanian")) return 1;
+  if (aset === "tidak punya") return 5;
+  if (aset === "kost") return 4;
+  if (aset === "tanah sewa") return 3;
+  if (aset === "tanah pribadi") return 2;
+  if (aset.includes("tanah perkebunan/pertanian")) return 1;
   return 1;
 }
 
@@ -146,14 +146,12 @@ function skorRumah(r?: string): number {
 function skorUtangFromString(u?: string): number {
   if (!u) return 1;
 
-  const utang = Number(
-    u.replace(/[^0-9]/g, "") // hapus Rp, titik, spasi, simbol
-  );
-
-  if (utang >= 10_000_000) return 5;
-  if (utang >= 5_000_000) return 4;
-  if (utang >= 1_000_000) return 3;
-  if (utang > 0) return 2;
+  const utang = String(u).toLowerCase();
+  
+  if (utang === "tidak punya") return 1;
+  if (utang.includes("<500.000")) return 2;
+  if (utang.includes(">1.000.000")) return 3;
+  if (utang.includes(">2.000.000")) return 4;
   return 1;
 }
 
@@ -199,20 +197,22 @@ export default function PenilaianPage() {
    * FETCH DATA
    * ============================================================ */
   async function fetchPenilaian() {
-  try {
-    setLoading(true);
-    const res = await fetch("/api/penilaian");
+    try {
+      setLoading(true);
+      const res = await fetch("/api/penilaian");
 
-    if (!res.ok) throw new Error("Fetch penilaian gagal");
+      if (!res.ok) throw new Error("Fetch penilaian gagal");
 
-    setData(await res.json());
-  } catch (e) {
-    console.error(e);
-    setError("Gagal memuat data penilaian");
-  } finally {
-    setLoading(false);
+      const jsonData = await res.json();
+      setData(Array.isArray(jsonData) ? jsonData : []);
+    } catch (e) {
+      console.error(e);
+      setError("Gagal memuat data penilaian");
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
   }
-}
 
   /* ============================================================
    * PRESENTASE KELAYAKAN
@@ -246,38 +246,54 @@ export default function PenilaianPage() {
   }, [data]);
 
   async function fetchWarga() {
-    const res = await fetch("/api/warga");
-    if (!res.ok) return;
+    try {
+      const res = await fetch("/api/warga");
+      if (!res.ok) {
+        console.error("Failed to fetch warga data");
+        return;
+      }
 
-    const json = await res.json();
+      const json = await res.json();
 
-    setWargaList(
-      json.map((w: any) => ({
-        id_warga: w.id_warga,
-        nik: w.nik,
-        nama: w.nama,
+      setWargaList(
+        Array.isArray(json) ? json.map((w: any) => ({
+          id_warga: w.id_warga,
+          nik: w.nik,
+          nama: w.nama,
 
-        pendapatan_bulanan: toNumberSafe(w.pendapatan_bulanan),
-        aset: w.aset ?? "",
-        kondisi_rumah: w.kondisi_rumah ?? "",
-        jumlah_tanggungan: toNumberSafe(w.jumlah_tanggungan),
+          pendapatan_bulanan: toNumberSafe(w.pendapatan_bulanan),
+          aset: w.aset ?? "",
+          kondisi_rumah: w.kondisi_rumah ?? "",
+          jumlah_tanggungan: toNumberSafe(w.jumlah_tanggungan),
 
-        perlindungan_kesehatan: w.perlindungan_kesehatan,
-        kondisi_kesehatan: w.kondisi_kesehatan,
-        pendidikan: w.pendidikan,
-        kendaraan: w.kendaraan,
-        daya_listrik: toNumberSafe(w.daya_listrik),
-        luas_rumah: toNumberSafe(w.luas_rumah),
-        usia: toNumberSafe(w.usia),
-        status_pekerjaan: w.status_pekerjaan,
-        jumlah_utang: toNumberSafe(w.jumlah_utang),
-      }))
-    );
+          perlindungan_kesehatan: w.perlindungan_kesehatan,
+          kondisi_kesehatan: w.kondisi_kesehatan,
+          pendidikan: w.pendidikan,
+          kendaraan: w.kendaraan,
+          daya_listrik: toNumberSafe(w.daya_listrik),
+          luas_rumah: toNumberSafe(w.luas_rumah),
+          usia: toNumberSafe(w.usia),
+          status_pekerjaan: w.status_pekerjaan,
+          jumlah_utang: toNumberSafe(w.jumlah_utang),
+        })) : []
+      );
+    } catch (error) {
+      console.error("Error fetching warga:", error);
+      setWargaList([]);
+    }
   }
 
   async function fetchBobot() {
-    const res = await fetch("/api/ahpWeights");
-    if (res.ok) setBobotAHP(await res.json());
+    try {
+      const res = await fetch("/api/ahpWeights");
+      if (res.ok) {
+        const json = await res.json();
+        setBobotAHP(Array.isArray(json) ? json : []);
+      }
+    } catch (error) {
+      console.error("Error fetching bobot:", error);
+      setBobotAHP([]);
+    }
   }
 
   useEffect(() => {
@@ -285,6 +301,7 @@ export default function PenilaianPage() {
     fetchWarga();
     fetchBobot();
   }, []);
+  
   useEffect(() => {
     if (bobotAHP.length === 0) return;
 
@@ -368,15 +385,16 @@ export default function PenilaianPage() {
     const st = skorTanggungan(w.jumlah_tanggungan);
     const skor_utang = skorUtangFromString(String(w.jumlah_utang));
 
-    const skor_perlindungan = w.perlindungan_kesehatan ? 5 : 1;
+    const skor_perlindungan = w.perlindungan_kesehatan && w.perlindungan_kesehatan !== "Tidak ada" ? 5 : 1;
+    
     const skor_kondisi_kesehatan =
-      w.kondisi_kesehatan === "Sakit Berat"
+      w.kondisi_kesehatan === "Lumpuh"
         ? 5
         : w.kondisi_kesehatan === "Kelainan/difable"
         ? 4
         : w.kondisi_kesehatan === "Tuna netra/rungu/wicara"
         ? 3
-        : w.kondisi_kesehatan === "Riwayat Penyakit"
+        : w.kondisi_kesehatan === "Riwayat penyakit"
         ? 2
         : 1;
 
@@ -387,7 +405,7 @@ export default function PenilaianPage() {
         ? 4
         : w.pendidikan === "SMA"
         ? 3
-        : w.pendidikan === "D3/S1"
+        : w.pendidikan === "D1-S1"
         ? 2
         : 1;
 
@@ -398,8 +416,10 @@ export default function PenilaianPage() {
         ? 4
         : w.kendaraan === "Motor"
         ? 3
-        : w.kendaraan === "Mobil"
+        : w.kendaraan === "Motor lebih 1"
         ? 2
+        : w.kendaraan === "Mobil"
+        ? 1
         : 1;
 
     const dayaListrik = w.daya_listrik ?? 0;
@@ -416,12 +436,12 @@ export default function PenilaianPage() {
     const skor_status_pekerjaan =
       w.status_pekerjaan === "Tidak Bekerja"
         ? 5
-        : w.status_pekerjaan === "Serabutan"
-        ? 4
-        : w.status_pekerjaan === "swasta"
+        : w.status_pekerjaan === "Swasta"
         ? 3
-        : w.status_pekerjaan === "pns"
+        : w.status_pekerjaan === "PNS"
         ? 2
+        : w.status_pekerjaan === "Polri/TNI"
+        ? 1
         : 1;
 
     const total = Number(
@@ -479,26 +499,31 @@ export default function PenilaianPage() {
       return;
     }
 
-    const method = editingId ? "PUT" : "POST";
+    try {
+      const method = editingId ? "PUT" : "POST";
 
-    const res = await fetch("/api/penilaian", {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        id_penilaian: editingId,
-        tanggal_penilaian: new Date().toISOString(),
-      }),
-    });
+      const res = await fetch("/api/penilaian", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          id_penilaian: editingId,
+          tanggal_penilaian: new Date().toISOString(),
+        }),
+      });
 
-    if (!res.ok) {
-      setError("Gagal menyimpan data");
-      return;
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || "Gagal menyimpan data");
+      }
+
+      reset();
+      setEditingId(null);
+      fetchPenilaian();
+    } catch (error) {
+      console.error("Submit error:", error);
+      setError(error instanceof Error ? error.message : "Gagal menyimpan data");
     }
-
-    reset();
-    setEditingId(null);
-    fetchPenilaian();
   }
 
   function editRow(row: PenilaianPayload) {
@@ -506,21 +531,25 @@ export default function PenilaianPage() {
     reset(row);
   }
 
- async function removeRow(id_penilaian: number) {
-  const res = await fetch("/api/penilaian", {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id_penilaian }),
-  });
+  async function removeRow(id_penilaian: number) {
+    try {
+      const res = await fetch("/api/penilaian", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id_penilaian }),
+      });
 
-  if (!res.ok) {
-    setError("Gagal menghapus data");
-    return;
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || "Gagal menghapus data");
+      }
+
+      fetchPenilaian();
+    } catch (error) {
+      console.error("Delete error:", error);
+      setError(error instanceof Error ? error.message : "Gagal menghapus data");
+    }
   }
-
-  fetchPenilaian();
-}
-
 
   /* ============================================================
    * UI
@@ -536,6 +565,7 @@ export default function PenilaianPage() {
           {error}
         </div>
       )}
+      
       {/* STATISTIK */}
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="border rounded p-4 bg-white">
@@ -564,8 +594,7 @@ export default function PenilaianPage() {
         </div>
       </div>
 
-      {/* FORM */}
-      {/* FORM */}
+
       <form
         className="grid grid-cols-3 gap-3 mb-6"
         onSubmit={handleSubmit(submit)}
@@ -661,8 +690,7 @@ export default function PenilaianPage() {
         </Button>
       </form>
 
-      {/* TABLE */}
-      {/* TABLE */}
+      
       <div className="w-full overflow-x-auto mt-6 border rounded-lg">
         <Table className="min-w-max text-sm">
           <TableHeader>
@@ -696,58 +724,67 @@ export default function PenilaianPage() {
           </TableHeader>
 
           <TableBody>
-            {data.map((row) => (
-              <TableRow key={row.id_penilaian}>
-                <TableCell>{row.id_penilaian}</TableCell>
-                <TableCell>{row.warga?.nama}</TableCell>
+            {data.length > 0 ? (
+              data.map((row) => (
+                <TableRow key={row.id_penilaian}>
+                  <TableCell>{row.id_penilaian}</TableCell>
+                  <TableCell>{row.warga?.nama}</TableCell>
 
-                {/* SKOR LAMA */}
-                <TableCell>{row.skor_pendapatan}</TableCell>
-                <TableCell>{row.skor_aset}</TableCell>
-                <TableCell>{row.skor_rumah}</TableCell>
-                <TableCell>{row.skor_tanggungan}</TableCell>
-                <TableCell>{row.skor_utang}</TableCell>
-                {/* SKOR BARU */}
-                <TableCell>{row.skor_perlindungan}</TableCell>
-                <TableCell>{row.skor_kondisi_kesehatan}</TableCell>
-                <TableCell>{row.skor_pendidikan}</TableCell>
-                <TableCell>{row.skor_kendaraan}</TableCell>
-                <TableCell>{row.skor_daya_listrik}</TableCell>
-                <TableCell>{row.skor_usia}</TableCell>
-                <TableCell>{row.skor_luas_rumah}</TableCell>
-                <TableCell>{row.skor_status_pekerjaan}</TableCell>
+                  {/* SKOR LAMA */}
+                  <TableCell>{row.skor_pendapatan}</TableCell>
+                  <TableCell>{row.skor_aset}</TableCell>
+                  <TableCell>{row.skor_rumah}</TableCell>
+                  <TableCell>{row.skor_tanggungan}</TableCell>
+                  <TableCell>{row.skor_utang}</TableCell>
+                  
+                  {/* SKOR BARU */}
+                  <TableCell>{row.skor_perlindungan}</TableCell>
+                  <TableCell>{row.skor_kondisi_kesehatan}</TableCell>
+                  <TableCell>{row.skor_pendidikan}</TableCell>
+                  <TableCell>{row.skor_kendaraan}</TableCell>
+                  <TableCell>{row.skor_daya_listrik}</TableCell>
+                  <TableCell>{row.skor_usia}</TableCell>
+                  <TableCell>{row.skor_luas_rumah}</TableCell>
+                  <TableCell>{row.skor_status_pekerjaan}</TableCell>
 
-                <TableCell className="font-semibold">
-                  {row.skor_total}
-                </TableCell>
-                <TableCell>{row.kategori_asnaf}</TableCell>
-                <TableCell>{row.rekomendasi_bantuan}</TableCell>
-                <TableCell>
-                  <span
-                    className={`px-2 py-1 rounded text-xs font-semibold ${
-                      row.status_layak === "Layak"
-                        ? "bg-green-100 text-green-700"
-                        : "bg-red-100 text-red-700"
-                    }`}
-                  >
-                    {row.status_layak}
-                  </span>
-                </TableCell>
+                  <TableCell className="font-semibold">
+                    {row.skor_total}
+                  </TableCell>
+                  <TableCell>{row.kategori_asnaf}</TableCell>
+                  <TableCell>{row.rekomendasi_bantuan}</TableCell>
+                  <TableCell>
+                    <span
+                      className={`px-2 py-1 rounded text-xs font-semibold ${
+                        row.status_layak === "Layak"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-red-100 text-red-700"
+                      }`}
+                    >
+                      {row.status_layak}
+                    </span>
+                  </TableCell>
 
-                <TableCell className="flex gap-2 min-w-max">
-                  <Button size="sm" onClick={() => editRow(row)}>
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => removeRow(row.id_penilaian!)}
-                  >
-                    Hapus
-                  </Button>
+                  <TableCell className="flex gap-2 min-w-max">
+                    <Button size="sm" onClick={() => editRow(row)}>
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => removeRow(row.id_penilaian!)}
+                    >
+                      Hapus
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={20} className="text-center py-4">
+                  Tidak ada data penilaian
                 </TableCell>
               </TableRow>
-            ))}
+            )}
           </TableBody>
         </Table>
       </div>
