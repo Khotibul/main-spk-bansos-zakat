@@ -1,5 +1,9 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
-
+Project ini merupakan tugas kelompok pembuatan jurnal publikasi untuk UAS mata kuliah Managemen Proyek Teknologi Informasi yang bisa anda akses di https://ojs.ruangpublikasi.com/index.php/jpim/article/view/1641
+semoga project dan jurnal ini memberikan manfaat dan berkah bagi pengajar, penulis dan pembaca
+donasi dan free sourcecode 
+BSI 7274934675
+atas Nama : Muhammad Khotibul Umam
 ## Getting Started
 
 First, run the development server:
