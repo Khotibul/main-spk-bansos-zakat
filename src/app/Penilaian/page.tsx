@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { MainLayout } from "../main-layout/main-layout";
+export const runtime = "nodejs";
 
 /* ============================================================
  * TYPES

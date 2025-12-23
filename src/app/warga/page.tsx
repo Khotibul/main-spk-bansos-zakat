@@ -44,6 +44,7 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { MainLayout } from "../main-layout/main-layout";
+export const runtime = "nodejs";
 
 /* ======================
    Constants / Options
