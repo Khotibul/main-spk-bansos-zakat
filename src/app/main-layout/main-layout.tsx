@@ -28,9 +28,10 @@ import Cookie from "js-cookie";
 import { createContext, useContext, useEffect, useState } from "react";
 
 type Users = {
-  id_users: number;
+  id: number;
   username: string;
   role: string;
+  email: string; // ✅ TAMBAHKAN
 };
 
 type Warga = {
