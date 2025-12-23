@@ -307,7 +307,10 @@ export default function WargaPage() {
   }
 
   useEffect(() => {
-    fetchWarga();
+    fetch("/api/warga")
+      .then((res) => res.json())
+      .then((json) => setData(Array.isArray(json) ? json : []))
+      .catch(() => setData([]));
   }, []);
 
   // single form submit (create/upsert)

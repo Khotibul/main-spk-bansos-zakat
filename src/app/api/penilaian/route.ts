@@ -49,7 +49,15 @@ async function hitungSkorTotal(body: any) {
 
   return total;
 }
+let cachedBobot: any[] | null = null;
 
+async function getBobot() {
+  if (!cachedBobot) {
+    cachedBobot = await prisma.ahpWeights.findMany();
+  }
+  return cachedBobot;
+}
+const ahp = await getBobot();
 /* ============================================================
  * GET
  * ============================================================ */

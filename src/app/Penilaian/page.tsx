@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
@@ -200,11 +199,21 @@ export default function PenilaianPage() {
    * FETCH DATA
    * ============================================================ */
   async function fetchPenilaian() {
+  try {
     setLoading(true);
     const res = await fetch("/api/penilaian");
-    if (res.ok) setData(await res.json());
+
+    if (!res.ok) throw new Error("Fetch penilaian gagal");
+
+    setData(await res.json());
+  } catch (e) {
+    console.error(e);
+    setError("Gagal memuat data penilaian");
+  } finally {
     setLoading(false);
   }
+}
+
   /* ============================================================
    * PRESENTASE KELAYAKAN
    * ============================================================ */
@@ -497,14 +506,21 @@ export default function PenilaianPage() {
     reset(row);
   }
 
-  async function removeRow(id_penilaian: number) {
-    await fetch("/api/penilaian", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id_penilaian }),
-    });
-    fetchPenilaian();
+ async function removeRow(id_penilaian: number) {
+  const res = await fetch("/api/penilaian", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id_penilaian }),
+  });
+
+  if (!res.ok) {
+    setError("Gagal menghapus data");
+    return;
   }
+
+  fetchPenilaian();
+}
+
 
   /* ============================================================
    * UI

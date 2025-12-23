@@ -1,4 +1,5 @@
 'use client';
+
 import type { Credentials } from '@/api/auth/signin/type';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,24 +15,37 @@ export function SigninForm() {
   const router = useRouter();
 
   async function onSubmit(data: Credentials) {
+    // 🔴 VALIDASI KOSONG
+    if (!data.email || !data.password) {
+      alert('Email dan password wajib diisi');
+      return;
+    }
+
     const response = await fetch('/api/auth/signin', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
     });
 
-    // --- pastikan body ada sebelum parse JSON
-    let responseData = null;
+    let responseData: any = null;
     try {
       const text = await response.text();
       responseData = text ? JSON.parse(text) : null;
-    } catch (err) {
-      console.warn('Response tidak valid JSON', err);
+    } catch {
+      // ignore
     }
 
-    // refresh cache dan pindah halaman
+    // ❌ LOGIN GAGAL
+    if (!response.ok) {
+      alert(responseData?.message || 'Email atau password salah');
+      return;
+    }
+
+    // ✅ LOGIN BERHASIL
+    alert('Login berhasil');
+
     router.refresh();
-    router.push('/'); // ⬅ ganti redirect()
+    router.push('/');
   }
 
   return (
@@ -55,7 +69,7 @@ export function SigninForm() {
           <div className='grid gap-4'>
             <div className='grid gap-2'>
               <Label htmlFor='email'>Email</Label>
-              <Input id='email' type='email' required {...register('email')} />
+              <Input id='email' type='email' {...register('email')} />
             </div>
 
             <div className='grid gap-2'>
@@ -65,7 +79,7 @@ export function SigninForm() {
                   Forgot your password?
                 </Link>
               </div>
-              <Input id='password' type='password' required {...register('password')} />
+              <Input id='password' type='password' {...register('password')} />
             </div>
 
             <Button type='submit' className='w-full'>
@@ -76,7 +90,9 @@ export function SigninForm() {
 
         <div className='mt-4 text-center text-sm'>
           Don&apos;t have an account?{' '}
-          <Link href='/signup' className='underline'>Sign up</Link>
+          <Link href='/signup' className='underline'>
+            Sign up
+          </Link>
         </div>
       </CardContent>
     </Card>

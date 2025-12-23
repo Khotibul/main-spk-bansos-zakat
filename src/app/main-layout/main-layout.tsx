@@ -27,7 +27,28 @@ import { Separator } from "@/components/ui/separator";
 
 import Cookie from "js-cookie";
 import { createContext, useContext, useEffect, useState } from "react";
-import type { Users, Warga, Penilaian, StatusValidasi } from "@prisma/client"; // Tambahkan StatusValidasi
+type Users = {
+  id_users: number;
+  username: string;
+  role: string;
+};
+
+type Warga = {
+  id_warga: number;
+  nik: string;
+  nama: string;
+  usia?: number;
+  pendapatan_bulanan?: number;
+  jumlah_tanggungan?: number;
+};
+
+type Penilaian = {
+  id_penilaian: number;
+  id_warga: number;
+  status_layak?: "LAYAK" | "TIDAK_LAYAK";
+  status_validasi?: "MENUNGGU" | "DISETUJUI" | "DITOLAK";
+};
+
 import {
   Users as UsersIcon, // Ganti nama untuk menghindari konflik
   Home,
@@ -91,8 +112,11 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
           fetch("/api/penilaian"),
         ]);
 
-        setWarga(await wargaRes.json());
-        setPenilaian(await penilaianRes.json());
+        const wargaData = await wargaRes.json();
+        const penilaianData = await penilaianRes.json();
+
+        setWarga(Array.isArray(wargaData) ? wargaData : []);
+        setPenilaian(Array.isArray(penilaianData) ? penilaianData : []);
       } catch (err) {
         console.error("Gagal memuat data", err);
       } finally {
@@ -404,7 +428,10 @@ export const MainLayout = ({ children }: MainLayoutProps) => {
                                   <td className="px-4 py-3">
                                     {penilaianWarga ? (
                                       <StatusBadge
-                                        status={penilaianWarga.status_layak ?? "BELUM_DINILAI"}
+                                        status={
+                                          penilaianWarga.status_layak ??
+                                          "BELUM_DINILAI"
+                                        }
                                       />
                                     ) : (
                                       <Badge variant="outline">
@@ -516,22 +543,14 @@ function StatCard({
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const getVariant = (status: string) => {
-    switch (status) {
-      case "LAYAK":
-        return "default";
-      case "TIDAK_LAYAK":
-        return "destructive";
-      case "DISETUJUI":
-        return "default";
-      case "DITOLAK":
-        return "destructive";
-      case "MENUNGGU":
-        return "secondary";
-      default:
-        return "outline";
-    }
-  };
+  const variant =
+    status === "LAYAK" || status === "DISETUJUI"
+      ? "default"
+      : status === "TIDAK_LAYAK" || status === "DITOLAK"
+      ? "destructive"
+      : status === "MENUNGGU"
+      ? "secondary"
+      : "outline";
 
-  return <Badge variant={getVariant(status)}>{status}</Badge>;
+  return <Badge variant={variant}>{status}</Badge>;
 }

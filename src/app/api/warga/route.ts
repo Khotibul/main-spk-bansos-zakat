@@ -164,8 +164,10 @@ export async function GET() {
 
     return NextResponse.json(rows);
   } catch (err) {
+    console.error("API /warga error:", err);
+
     return NextResponse.json(
-      { error: "Database error", detail: String(err) },
+      { error: "Database error" },
       { status: 500 }
     );
   }
